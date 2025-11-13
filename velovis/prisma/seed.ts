@@ -1,9 +1,11 @@
 // prisma/seed.ts
-// Senin "sıfırdan" dosyanın, projenin 'schema.prisma' dosyasına uyarlanmış,
-// hatasız çalışan nihai hali.
+//
+// 'schema.prisma' dosyanızla %100 uyumlu,
+// hataları giderilmiş nihai 'seed.ts' sürümü.
+//
 
 import { PrismaClient, OrderStatus } from '@prisma/client';
-import * as bcrypt from 'bcrypt'; // DÜZELTME: 'bcryptjs' yerine 'bcrypt'
+import * as bcrypt from 'bcrypt';
 
 // Prisma client'ı başlat
 const prisma = new PrismaClient();
@@ -33,11 +35,11 @@ async function main() {
 
   // ----------------------------------------------------------------
   // 1. TEMİZLİK (İlişkisel sıraya göre tersten)
-  // (Bu kod, senin 'schema.prisma' dosyanla %100 uyumlu)
+  // (schema.prisma ile uyumlu hale getirildi)
   // ----------------------------------------------------------------
   console.log('🧹 Eski veriler temizleniyor...');
   await prisma.userRole.deleteMany();
-  await prisma.rolePermission.deleteMany();
+  await prisma.rolePermission.deleteMany(); // Role'den önce
   await prisma.orderItem.deleteMany();
   await prisma.productComment.deleteMany();
   await prisma.productPhoto.deleteMany();
@@ -45,17 +47,17 @@ async function main() {
   await prisma.refreshToken.deleteMany();
   await prisma.passwordResetToken.deleteMany();
   await prisma.order.deleteMany();
-  await prisma.product.deleteMany();
+  await prisma.product.deleteMany(); // Category'den önce
   await prisma.category.deleteMany();
-  await prisma.permission.deleteMany(); // (Orijinal 'seed.ts' dosyamızda bu vardı, bunu da temizleyelim)
-  await prisma.role.deleteMany();
+  await prisma.role.deleteMany(); // User'dan önce
   await prisma.user.deleteMany();
+  // DÜZELTME: 'Permission' modeli schema'da yok, silindi.
   console.log('🧹 Temizlik tamamlandı.');
 
   // ----------------------------------------------------------------
-  // 2. YETKİLER (Orijinal 'seed.ts' dosyamızdan)
+  // 2. YETKİLER (Düz string listesi)
+  // (schema.prisma'daki RolePermission.permissionKey'e yüklenecek)
   // ----------------------------------------------------------------
-  console.log('🔨 Yetkiler oluşturuluyor...');
   const permissionsList = [
     'users:create',
     'users:read',
@@ -81,11 +83,7 @@ async function main() {
     'comments:update',
     'comments:delete',
   ];
-  await prisma.permission.createMany({
-    data: permissionsList.map((name) => ({ name })),
-  });
-  const allPermissions = await prisma.permission.findMany();
-  console.log(`✨ ${allPermissions.length} yetki oluşturuldu.`);
+  // DÜZELTME: Ayrı 'Permission' modeli oluşturma kaldırıldı.
 
   // ----------------------------------------------------------------
   // 3. ROLLER (Bağımsız)
@@ -94,12 +92,16 @@ async function main() {
   const adminRole = await prisma.role.create({
     data: {
       name: 'ADMIN',
-      // Tüm yetkileri 'ADMIN' rolüne bağlayalım (Orijinal 'seed.ts' mantığı)
+      // DÜZELTME: Yetkiler artık 'RolePermission' tablosuna
+      // 'permissionKey' olarak nested-create ile ekleniyor.
       permissions: {
-        connect: allPermissions.map((p) => ({ id: p.id })),
+        create: permissionsList.map((key) => ({
+          permissionKey: key,
+        })),
       },
     },
   });
+
   const userRole = await prisma.role.create({
     data: { name: 'USER' },
   });
@@ -109,40 +111,45 @@ async function main() {
   // 4. KULLANICILAR (Bağımsız)
   // ----------------------------------------------------------------
   console.log('🔨 Kullanıcılar oluşturuluyor...');
-  const salt = await bcrypt.genSalt(10); // 'bcrypt' kullanıldı
+  const salt = await bcrypt.genSalt(10);
   const hashedPassword = await bcrypt.hash('Admin123!', salt);
   const hashedPasswordUser = await bcrypt.hash('User123!', salt);
 
   const adminUser = await prisma.user.create({
     data: {
-      // DÜZELTME: 'firstName' ve 'lastName' yerine 'fullName'
-      fullName: 'Admin User',
+      // DÜZELTME: schema.prisma 'firstName' ve 'lastName' bekliyor.
+      // 'fullName' trigger ile dolacak.
+      firstName: 'Admin',
+      lastName: 'User',
       username: 'admin',
       email: 'admin@example.com',
       password: hashedPassword,
       isActive: true,
+      fullName: 'Admin User', // Trigger'ı beklememek için seed'de ekleyelim
     },
   });
 
   const user1 = await prisma.user.create({
     data: {
-      // DÜZELTME: 'firstName' ve 'lastName' yerine 'fullName'
-      fullName: 'Ali Veli',
+      firstName: 'Ali',
+      lastName: 'Veli',
       username: 'aliveli',
       email: 'ali.veli@example.com',
       password: hashedPasswordUser,
       isActive: true,
+      fullName: 'Ali Veli', // Trigger'ı beklememek için seed'de ekleyelim
     },
   });
 
   const user2 = await prisma.user.create({
     data: {
-      // DÜZELTME: 'firstName' ve 'lastName' yerine 'fullName'
-      fullName: 'Ayşe Yılmaz',
+      firstName: 'Ayşe',
+      lastName: 'Yılmaz',
       username: 'ayseyilmaz',
       email: 'ayse.yilmaz@example.com',
       password: hashedPasswordUser,
       isActive: false, // Pasif kullanıcı
+      fullName: 'Ayşe Yılmaz', // Trigger'ı beklememek için seed'de ekleyelim
     },
   });
   console.log(
@@ -151,7 +158,6 @@ async function main() {
 
   // ----------------------------------------------------------------
   // 5. KULLANICI-ROL EŞLEŞMESİ (User ve Role'e bağlı)
-  // (Kodun %100 uyumlu)
   // ----------------------------------------------------------------
   console.log('🔗 Kullanıcılar rollere bağlanıyor...');
   await prisma.userRole.create({
@@ -188,7 +194,8 @@ async function main() {
     data: {
       name: 'Elektronik',
       slug: 'elektronik',
-      // DÜZELTME: 'order' alanı 'schema.prisma' dosyanızda yok.
+      // DÜZELTME: 'order' alanı schema.prisma'da zorunlu.
+      order: 1,
     },
   });
 
@@ -196,6 +203,7 @@ async function main() {
     data: {
       name: 'Giyim & Moda',
       slug: 'giyim-moda',
+      order: 2,
     },
   });
 
@@ -203,6 +211,7 @@ async function main() {
     data: {
       name: 'Kitap, Müzik, Film',
       slug: 'kitap-muzik-film',
+      order: 3,
     },
   });
   console.log(
@@ -219,13 +228,16 @@ async function main() {
     data: {
       name: product1Name,
       slug: slugify(product1Name),
-      // DÜZELTME: 'short/longDescription' yerine 'description'
-      description:
-        'Yeni nesil amiral gemisi akıllı telefon. Bu telefon, 120Hz ekranı, 108MP kamerası ve 5000mAh bataryası ile öne çıkıyor. Tüm gün kullanım ve profesyonel fotoğrafçılık için ideal.',
+      // DÜZELTME: 'description' -> 'shortDescription' ve 'longDescription'
+      shortDescription:
+        'Yeni nesil amiral gemisi akıllı telefon. 120Hz ekran, 108MP kamera.',
+      longDescription:
+        'Bu telefon, 120Hz ekranı, 108MP kamerası ve 5000mAh bataryası ile öne çıkıyor. Tüm gün kullanım ve profesyonel fotoğrafçılık için ideal.',
       price: 29999.99,
-      // DÜZELTME: 'primaryPhotoUrl' alanı 'schema.prisma' dosyanızda yok.
-      // DÜZELTME: 'stockQuantity' yerine 'stock'
-      stock: 50,
+      // DÜZELTME: 'primaryPhotoUrl' alanı schema'da var.
+      primaryPhotoUrl: 'https://picsum.photos/id/1/600/600',
+      // DÜZELTME: 'stock' -> 'stockQuantity'
+      stockQuantity: 50,
       categoryId: catElektronik.id, // İlişki
     },
   });
@@ -235,10 +247,12 @@ async function main() {
     data: {
       name: product2Name,
       slug: slugify(product2Name),
-      description:
-        'Aktif gürültü engelleme özellikli kulaklık. Mükemmel ses kalitesi ve 30 saate varan pil ömrü. Kristal netliğinde görüşmeler için 3 mikrofonlu sistem.',
+      shortDescription: 'Aktif gürültü engelleme özellikli kulaklık.',
+      longDescription:
+        'Mükemmel ses kalitesi ve 30 saate varan pil ömrü. Kristal netliğinde görüşmeler için 3 mikrofonlu sistem.',
       price: 4599.5,
-      stock: 120,
+      primaryPhotoUrl: 'https://picsum.photos/id/117/600/600',
+      stockQuantity: 120,
       categoryId: catElektronik.id, // İlişki
     },
   });
@@ -248,10 +262,12 @@ async function main() {
     data: {
       name: product3Name,
       slug: slugify(product3Name),
-      description:
-        'Hakiki kuzu derisi, vintage model. Soğuk havalar için ideal, şık ve dayanıklı. İç astarı yünlüdür ve vücudu sıcak tutar.',
+      shortDescription: 'Hakiki kuzu derisi, vintage model.',
+      longDescription:
+        'Soğuk havalar için ideal, şık ve dayanıklı. İç astarı yünlüdür ve vücudu sıcak tutar.',
       price: 7899.0,
-      stock: 30,
+      // primaryPhotoUrl opsiyonel (?), eklenmeyebilir.
+      stockQuantity: 30,
       categoryId: catGiyim.id, // İlişki
     },
   });
@@ -261,10 +277,11 @@ async function main() {
     data: {
       name: product4Name,
       slug: slugify(product4Name),
-      description:
-        '5 kitaptan oluşan özel kutulu set. Dune, Vakıf, 2001: Bir Uzay Destanı ve daha fazlası. Bilim kurgu severler için kaçırılmayacak bir koleksiyon.',
+      shortDescription: '5 kitaptan oluşan özel kutulu set.',
+      longDescription:
+        'Dune, Vakıf, 2001: Bir Uzay Destanı ve daha fazlası. Bilim kurgu severler için kaçırılmayacak bir koleksiyon.',
       price: 1250.0,
-      stock: 75,
+      stockQuantity: 75,
       categoryId: catKitap.id, // İlişki
     },
   });
@@ -275,7 +292,7 @@ async function main() {
 
   // ----------------------------------------------------------------
   // 8. ÜRÜN FOTOĞRAFLARI (Product'a bağlı)
-  // (Kodun %100 uyumlu)
+  // (Bu kısım schema ile uyumluydu, değişmedi)
   // ----------------------------------------------------------------
   console.log('📸 Ürün fotoğrafları ekleniyor...');
   await prisma.productPhoto.createMany({
@@ -307,7 +324,7 @@ async function main() {
 
   // ----------------------------------------------------------------
   // 9. ÜRÜN YORUMLARI (User ve Product'a bağlı)
-  // (Kodun %100 uyumlu)
+  // (Bu kısım schema ile uyumluydu, değişmedi)
   // ----------------------------------------------------------------
   console.log('✍️ Yorumlar ekleniyor...');
   await prisma.productComment.create({
@@ -343,7 +360,7 @@ async function main() {
 
   // ----------------------------------------------------------------
   // 10. SİPARİŞ VE SİPARİŞ KALEMLERİ (User, Order, Product'a bağlı)
-  // (Kodun %100 uyumlu)
+  // (Bu kısım schema ile uyumluydu, değişmedi)
   // ----------------------------------------------------------------
   console.log('🛒 Siparişler oluşturuluyor...');
 
@@ -396,7 +413,7 @@ async function main() {
 
   // ----------------------------------------------------------------
   // 11. SEPET (User ve Product'a bağlı)
-  // (Kodun %100 uyumlu)
+  // (Bu kısım schema ile uyumluydu, değişmedi)
   // ----------------------------------------------------------------
   console.log('🧺 Sepetler oluşturuluyor...');
   // Ali Veli'nin sepetinde 1 adet kulaklık var
